@@ -24,8 +24,7 @@ If you're looking for a hosted desktop recording API, consider checking out [Rec
 
 <p align="center">
   <a href="https://www.apismart.ai/">
-    <img src="assets/sponsors/apismart.svg#gh-light-mode-only" alt="ApiSmart" height="40" />
-    <img src="assets/sponsors/apismart-white.svg#gh-dark-mode-only" alt="ApiSmart" height="40" />
+    <img src="assets/sponsors/apismart.svg" alt="ApiSmart" height="40" />
   </a>
 </p>
 
