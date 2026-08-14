@@ -20,15 +20,9 @@ If you're looking for a hosted desktop recording API, consider checking out [Rec
 
 ---
 
-### Sponsored by ApiSmart — One API for Leading AI Models
+### Sponsored by <a href="https://dub.sh/apismart"><img src="assets/sponsors/apismart.svg" alt="ApiSmart" height="24" align="center" /></a> — One API for Leading AI Models
 
-<p align="center">
-  <a href="https://www.apismart.ai/">
-    <img src="assets/sponsors/apismart.svg" alt="ApiSmart" height="40" />
-  </a>
-</p>
-
-[ApiSmart](https://www.apismart.ai/) unifies leading LLM, image, and video models through one OpenAI-compatible API. Use one key to switch models, simplify billing, and improve reliability with automatic failover.
+[ApiSmart](https://dub.sh/apismart) unifies leading LLM, image, and video models through one OpenAI-compatible API. Use one key to switch models, simplify billing, and improve reliability with automatic failover.
 
 ---
 
