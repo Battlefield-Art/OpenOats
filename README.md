@@ -20,6 +20,19 @@ If you're looking for a hosted desktop recording API, consider checking out [Rec
 
 ---
 
+### Sponsored by ApiSmart — One API for Leading AI Models
+
+<p align="center">
+  <a href="https://www.apismart.ai/">
+    <img src="assets/sponsors/apismart.svg#gh-light-mode-only" alt="ApiSmart" height="40" />
+    <img src="assets/sponsors/apismart-white.svg#gh-dark-mode-only" alt="ApiSmart" height="40" />
+  </a>
+</p>
+
+[ApiSmart](https://www.apismart.ai/) unifies leading LLM, image, and video models through one OpenAI-compatible API. Use one key to switch models, simplify billing, and improve reliability with automatic failover.
+
+---
+
 <p align="center">
   <img src="assets/hero.svg" width="720" alt="OpenOats during a call — suggestions drawn from your own notes appear at the top, live transcript below" />
 </p>
