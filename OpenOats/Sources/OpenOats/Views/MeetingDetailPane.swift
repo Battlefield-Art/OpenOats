@@ -55,6 +55,7 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
     @State private var meetingFamilyBottomTab: MeetingFamilyBottomTab = .history
     @State private var isMeetingFamilyBottomCollapsed = false
     @State private var isNotesAssetDropTarget = false
+    @State private var isGeneratedNotesScratchpadExpanded = false
     @State private var renamingSessionID: String?
     @State private var renameText: String = ""
     @FocusState private var renameFieldFocused: Bool
@@ -2505,6 +2506,7 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
                     } else if let notes = state.loadedNotes {
                         notesContentView(
                             controller: controller,
+                            state: state,
                             notes: notes,
                             sessionDirectory: state.selectedSessionDirectory,
                             attachments: state.loadedAttachments
@@ -2515,6 +2517,7 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
                 } else if let notes = state.loadedNotes {
                     notesContentView(
                         controller: controller,
+                        state: state,
                         notes: notes,
                         sessionDirectory: state.selectedSessionDirectory,
                         attachments: state.loadedAttachments
@@ -2997,6 +3000,7 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
 
     private func notesContentView(
         controller: NotesController,
+        state: NotesState,
         notes: GeneratedNotes,
         sessionDirectory: URL?,
         attachments: [NoteAttachment]
@@ -3007,12 +3011,59 @@ struct MeetingDetailPane<SessionFolderMenuItems: View>: View {
                     attachmentsSection(controller: controller, attachments: attachments)
                 }
 
+                if !state.myNotesText.isEmpty {
+                    generatedNotesScratchpadSection(controller: controller, state: state)
+                }
+
                 markdownContent(notes.markdown, sessionDirectory: sessionDirectory)
                     .accessibilityIdentifier("notes.renderedMarkdown")
             }
             .padding(16)
             .environment(\.openURL, markdownOpenURLAction(sessionDirectory: sessionDirectory))
         }
+    }
+
+    /// The "My Notes" scratchpad, shown alongside generated notes so it stays
+    /// reachable once a session has AI notes. Collapsed by default: the generated
+    /// notes are the primary content, and the disclosure title keeps the
+    /// scratchpad visible without taking over the view.
+    @ViewBuilder
+    private func generatedNotesScratchpadSection(controller: NotesController, state: NotesState) -> some View {
+        DisclosureGroup(isExpanded: $isGeneratedNotesScratchpadExpanded) {
+            TextEditor(text: Binding(
+                get: { state.myNotesText },
+                set: { controller.updateMyNotes($0) }
+            ))
+            .font(.system(size: 12))
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: 60, maxHeight: 180)
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(.quaternary, lineWidth: 1)
+            )
+            .padding(.top, 6)
+            .accessibilityIdentifier("notes.generatedScratchpadEditor")
+        } label: {
+            Text("My Notes")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityIdentifier("notes.generatedScratchpadSection")
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(.quaternary, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
