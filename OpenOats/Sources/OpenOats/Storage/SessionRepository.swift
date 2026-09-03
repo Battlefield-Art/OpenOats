@@ -748,6 +748,52 @@ actor SessionRepository {
         scheduleMirror(sessionID: sessionID, notesMarkdown: notes.markdown)
     }
 
+    /// Result of a generated-notes write that had to inspect the session first.
+    enum GeneratedNotesWriteOutcome: Sendable, Equatable {
+        case written
+        /// The session was deleted before the write.
+        case sessionMissing
+        /// The session gained notes before the write.
+        case notesAlreadyExist
+    }
+
+    /// Write generated notes, but only while the session still exists and
+    /// still has no notes.
+    ///
+    /// Generation takes minutes, so the session can change underneath it: the
+    /// user may delete the meeting, or write notes by hand. A caller cannot
+    /// guard that itself, because every call into this actor is a suspension
+    /// point — a delete or a manual save can land between a caller's check and
+    /// its write, which resurrects a deleted session as an empty shell or
+    /// overwrites the user's own notes. The check and the write therefore
+    /// happen here, in one operation, with no suspension between them.
+    ///
+    /// The heading needs the session's current title and start date, so
+    /// normalization happens here too rather than against a stale read.
+    func saveGeneratedNotesIfAbsent(
+        sessionID: String,
+        template: TemplateSnapshot,
+        markdown: String,
+        generatedAt: Date
+    ) -> GeneratedNotesWriteOutcome {
+        guard sessionExists(id: sessionID) else { return .sessionMissing }
+
+        let session = loadSession(id: sessionID).index
+        guard !session.hasNotes else { return .notesAlreadyExist }
+
+        let notes = GeneratedNotes(
+            template: template,
+            generatedAt: generatedAt,
+            markdown: GeneratedNotes.normalizedMarkdown(
+                markdown,
+                title: session.title,
+                date: session.startedAt
+            )
+        )
+        saveNotes(sessionID: sessionID, notes: notes)
+        return .written
+    }
+
     func loadNotes(sessionID: String) -> GeneratedNotes? {
         let dir = sessionDirectory(for: sessionID)
         let mdURL = dir.appendingPathComponent("notes.md")
@@ -920,6 +966,19 @@ actor SessionRepository {
         results.append(contentsOf: legacyResults)
 
         return results.sorted { $0.startedAt > $1.startedAt }
+    }
+
+    /// True when the session still has a record on disk.
+    ///
+    /// Writers check this before saving into a session directory: `saveNotes`
+    /// creates the directory it writes to, so a save that lands after the user
+    /// deleted the meeting would resurrect it as an empty shell.
+    func sessionExists(id: String) -> Bool {
+        let fm = FileManager.default
+        let canonical = sessionDirectory(for: id).appendingPathComponent("session.json")
+        if fm.fileExists(atPath: canonical.path) { return true }
+        // Legacy layout: <sessions>/<id>.jsonl beside an optional sidecar.
+        return fm.fileExists(atPath: sessionsDirectory.appendingPathComponent("\(id).jsonl").path)
     }
 
     func loadSession(id: String) -> SessionDetail {
