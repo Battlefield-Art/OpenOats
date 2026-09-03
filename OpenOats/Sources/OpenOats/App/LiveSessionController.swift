@@ -1277,7 +1277,7 @@ final class LiveSessionController {
         }
 
         if let routerError = error as? OpenRouterClient.OpenRouterError,
-           case .httpError(let statusCode, _) = routerError {
+           case .httpError(let statusCode, _, _) = routerError {
             // 429 and 5xx are the server asking to be tried again;
             // 401 / 403 / 404 are settled answers.
             return statusCode == 429 || (500...599).contains(statusCode)

@@ -184,4 +184,58 @@ final class OpenRouterClientTests: XCTestCase {
         XCTAssertFalse(outcome.sawContent)
         XCTAssertFalse(outcome.sawReasoning)
     }
+
+    // MARK: - HTTP error detail
+
+    func testErrorDetailReadsOllamaStyleStringErrorField() throws {
+        let data = Data(#"{"error":"model 'qwen3' not found, try pulling it first"}"#.utf8)
+        XCTAssertEqual(
+            OpenRouterClient.errorDetail(from: data),
+            "model 'qwen3' not found, try pulling it first"
+        )
+    }
+
+    func testErrorDetailReadsOpenAIStyleNestedErrorMessage() throws {
+        let data = Data(#"{"error":{"message":"The model does not exist","type":"invalid_request_error"}}"#.utf8)
+        XCTAssertEqual(OpenRouterClient.errorDetail(from: data), "The model does not exist")
+    }
+
+    func testErrorDetailFallsBackToRawBodyForNonJSON() throws {
+        let data = Data("404 page not found".utf8)
+        XCTAssertEqual(OpenRouterClient.errorDetail(from: data), "404 page not found")
+    }
+
+    func testErrorDetailReturnsNilForEmptyBody() throws {
+        XCTAssertNil(OpenRouterClient.errorDetail(from: Data()))
+        XCTAssertNil(OpenRouterClient.errorDetail(from: Data("   \n  ".utf8)))
+    }
+
+    func testErrorDetailTruncatesLongBodies() throws {
+        let long = String(repeating: "a", count: 900)
+        let detail = try XCTUnwrap(OpenRouterClient.errorDetail(from: Data(long.utf8)))
+        XCTAssertEqual(detail.count, 301)
+        XCTAssertTrue(detail.hasSuffix("\u{2026}"))
+    }
+
+    func testErrorDetailCollapsesNewlines() throws {
+        let data = Data("first line\nsecond line".utf8)
+        XCTAssertEqual(OpenRouterClient.errorDetail(from: data), "first line second line")
+    }
+
+    func testHTTPErrorDescriptionAppendsServerDetail() throws {
+        let error = OpenRouterClient.OpenRouterError.httpError(
+            404,
+            host: "localhost",
+            detail: "model 'qwen3' not found"
+        )
+        XCTAssertEqual(
+            error.errorDescription,
+            "Local LLM API error (HTTP 404): model 'qwen3' not found"
+        )
+    }
+
+    func testHTTPErrorDescriptionUnchangedWithoutDetail() throws {
+        let error = OpenRouterClient.OpenRouterError.httpError(500, host: "openrouter.ai")
+        XCTAssertEqual(error.errorDescription, "OpenRouter API error (HTTP 500)")
+    }
 }

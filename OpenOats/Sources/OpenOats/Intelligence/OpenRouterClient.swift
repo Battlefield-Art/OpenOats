@@ -121,6 +121,61 @@ actor OpenRouterClient {
         return nil
     }
 
+    /// The server's own explanation of an HTTP failure, for appending to the error
+    /// message. Providers put the useful part in the body — an Ollama 404 names the
+    /// missing model, for example — and discarding it leaves the user with a bare
+    /// status code and nothing to act on.
+    ///
+    /// Prefers the `error` field of the common OpenAI/Ollama JSON error shapes,
+    /// falling back to the raw body. Truncated so an HTML error page cannot flood
+    /// a notification or a banner.
+    static func errorDetail(from data: Data) -> String? {
+        let limit = 300
+
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            // {"error": "model 'x' not found"} and {"error": {"message": "..."}}
+            if let message = object["error"] as? String {
+                return truncated(message, limit: limit)
+            }
+            if let error = object["error"] as? [String: Any],
+               let message = error["message"] as? String {
+                return truncated(message, limit: limit)
+            }
+            if let message = object["message"] as? String {
+                return truncated(message, limit: limit)
+            }
+        }
+
+        guard let raw = String(data: data, encoding: .utf8) else { return nil }
+        return truncated(raw, limit: limit)
+    }
+
+    private static func truncated(_ text: String, limit: Int) -> String? {
+        let collapsed = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !collapsed.isEmpty else { return nil }
+        guard collapsed.count > limit else { return collapsed }
+        return String(collapsed.prefix(limit)) + "\u{2026}"
+    }
+
+    /// Reads an error response body from a streaming request, capped so a large or
+    /// endless body cannot stall the failure path.
+    private static func errorDetail(fromStreamed bytes: URLSession.AsyncBytes) async -> String? {
+        var collected = Data()
+        do {
+            for try await byte in bytes {
+                collected.append(byte)
+                if collected.count >= 4096 { break }
+            }
+        } catch {
+            guard !collected.isEmpty else { return nil }
+        }
+        guard !collected.isEmpty else { return nil }
+        return errorDetail(from: collected)
+    }
+
     /// Streams the completion response, yielding text chunks.
     func streamCompletion(
         apiKey: String? = nil,
@@ -179,7 +234,14 @@ actor OpenRouterClient {
                     guard let httpResponse = response as? HTTPURLResponse,
                           (200...299).contains(httpResponse.statusCode) else {
                         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                        continuation.finish(throwing: OpenRouterError.httpError(statusCode, host: targetURL.host))
+                        let detail = await Self.errorDetail(fromStreamed: bytes)
+                        continuation.finish(
+                            throwing: OpenRouterError.httpError(
+                                statusCode,
+                                host: targetURL.host,
+                                detail: detail
+                            )
+                        )
                         return
                     }
 
@@ -277,7 +339,11 @@ actor OpenRouterClient {
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw OpenRouterError.httpError(statusCode, host: targetURL.host)
+            throw OpenRouterError.httpError(
+                statusCode,
+                host: targetURL.host,
+                detail: Self.errorDetail(from: data)
+            )
         }
 
         return try Self.completionText(from: data)
@@ -357,7 +423,14 @@ actor OpenRouterClient {
                     guard let httpResponse = response as? HTTPURLResponse,
                           (200...299).contains(httpResponse.statusCode) else {
                         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                        continuation.finish(throwing: OpenRouterError.httpError(statusCode, host: targetURL.host))
+                        let detail = await Self.errorDetail(fromStreamed: bytes)
+                        continuation.finish(
+                            throwing: OpenRouterError.httpError(
+                                statusCode,
+                                host: targetURL.host,
+                                detail: detail
+                            )
+                        )
                         return
                     }
 
@@ -423,7 +496,11 @@ actor OpenRouterClient {
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw OpenRouterError.httpError(statusCode, host: targetURL.host)
+            throw OpenRouterError.httpError(
+                statusCode,
+                host: targetURL.host,
+                detail: Self.errorDetail(from: data)
+            )
         }
 
         let decoded = try JSONDecoder().decode(AnthropicResponse.self, from: data)
@@ -448,21 +525,23 @@ actor OpenRouterClient {
     }
 
     enum OpenRouterError: Error, LocalizedError {
-        case httpError(Int, host: String?)
+        case httpError(Int, host: String?, detail: String? = nil)
         case missingAPIKey(host: String?)
         case reasoningOnlyResponse
         case emptyResponse
 
         var errorDescription: String? {
             switch self {
-            case .httpError(let code, let host):
+            case .httpError(let code, let host, let detail):
                 let provider = switch host {
                 case let h? where h.contains("openrouter.ai"): "OpenRouter"
                 case let h? where h.contains("localhost"), let h? where h.contains("127.0.0.1"): "Local LLM"
                 case let h?: h
                 case nil: "LLM"
                 }
-                return "\(provider) API error (HTTP \(code))"
+                let base = "\(provider) API error (HTTP \(code))"
+                guard let detail, !detail.isEmpty else { return base }
+                return "\(base): \(detail)"
             case .missingAPIKey(let host):
                 let provider = switch host {
                 case let h? where h.contains("openrouter.ai"): "OpenRouter"
