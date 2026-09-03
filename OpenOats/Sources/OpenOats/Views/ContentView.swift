@@ -21,6 +21,8 @@ struct ContentView: View {
     @State private var showOnboarding = false
     @State private var showConsentSheet = false
     @State private var pendingControlBarAction: ControlBarAction?
+    /// A custom meeting-app list edit made mid-recording, waiting for idle.
+    @State private var pendingDetectionAppListRestart = false
 
     var body: some View {
         bodyWithModifiers
@@ -366,6 +368,27 @@ struct ContentView: View {
                 container.disableDetection(coordinator: coordinator)
             }
         }
+        .onChange(of: settings.customMeetingAppBundleIDs) {
+            // MeetingDetector snapshots the custom app list at setup, so edits
+            // only apply to a fresh detector. Restart detection to pick them up,
+            // but never mid-recording — teardown would cancel the silence and
+            // app-exit monitors of the live session. Remember the edit instead
+            // and apply it when the session is over, rather than dropping it.
+            guard settings.meetingAutoDetectEnabled else { return }
+            guard coordinator.state == .idle else {
+                pendingDetectionAppListRestart = true
+                return
+            }
+            restartDetectionForAppListChange()
+        }
+        .onChange(of: coordinator.state) {
+            // Apply a custom-app-list edit that arrived while a session was
+            // running, now that the session has finished finalizing.
+            guard coordinator.state == .idle, pendingDetectionAppListRestart else { return }
+            pendingDetectionAppListRestart = false
+            guard settings.meetingAutoDetectEnabled else { return }
+            restartDetectionForAppListChange()
+        }
         .onChange(of: settings.calendarIntegrationEnabled) {
             container.updateCalendarIntegration(enabled: settings.calendarIntegrationEnabled)
         }
@@ -400,6 +423,22 @@ struct ContentView: View {
     }
 
     // MARK: - Actions
+
+    /// Rebuild the detector so a custom meeting-app list edit takes effect.
+    /// Dismissals carry across, because a list edit is not a new session. The
+    /// immediate re-evaluation matters most for the motivating case: a fresh
+    /// CoreAudioSignalSource only emits on transitions, so an app added while
+    /// its call is already running would go unnoticed until the microphone
+    /// next cycled.
+    private func restartDetectionForAppListChange() {
+        let preservedDismissals = container.detectionController?.dismissedEvents ?? []
+        container.disableDetection(coordinator: coordinator)
+        container.enableDetection(settings: settings, coordinator: coordinator)
+        container.detectionController?.restoreDismissedEvents(preservedDismissals)
+        Task {
+            await container.detectionController?.evaluateImmediate()
+        }
+    }
 
     private func startSession() {
         guard settings.hasAcknowledgedRecordingConsent else {
