@@ -532,6 +532,21 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(store.showMenuBarIcon)
     }
 
+    func testShowNextMeetingInMenuBarDefaultsOffAndPersists() {
+        let suiteName = "com.openoats.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let store = makeStore(defaults: defaults)
+        XCTAssertFalse(store.showNextMeetingInMenuBar)
+
+        store.showNextMeetingInMenuBar = true
+        XCTAssertTrue(store.showNextMeetingInMenuBar)
+
+        let reopened = makeStore(defaults: defaults)
+        XCTAssertTrue(reopened.showNextMeetingInMenuBar)
+    }
+
     func testDefaultDetectionLogEnabled() {
         let store = makeStore()
         XCTAssertFalse(store.detectionLogEnabled)
